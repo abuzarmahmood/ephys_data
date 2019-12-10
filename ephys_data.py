@@ -26,6 +26,43 @@ E.g. whether to take single units, fast spiking etc (as this data is already in 
 """
 
 class ephys_data():
+
+    ######################
+    # Define static methods
+    #####################
+
+    @staticmethod
+    def _calc_firing_rates(step_size, window_size, total_time, spike_array):
+        """
+        step_size 
+        window_size :: params :: For moving window firing rate
+                                            calculation
+        total_time  :: params :: To calculate total number of bins 
+        spike_array :: params :: 4D array with time as last dimension
+        """
+        bin_inds = (0,window_size)
+        total_bins = int((total_time - window_size + 1) / step_size) + 1
+        bin_list = [(bin_inds[0]+step,bin_inds[1]+step) \
+                for step in np.arange(total_bins)*step_size ]
+
+        firing_rate = np.empty((spike_array.shape[0],spike_array.shape[1],total_bins))
+        for bin_inds in bin_list:
+            firing_rate[:,:,bin_inds[0]//step_size] = \
+                    np.sum(spike_array[:,:,bin_inds[0]:bin_inds[1]], axis=-1)
+
+        return firing_rate
+
+    @staticmethod 
+    def imshow(x):
+        """
+        Decorator function for more viewable firing rate heatmaps
+        """
+        plt.imshow(x,interpolation='nearest',aspect='auto')
+
+    ####################
+    # Initialize instance
+    ###################
+
     def __init__(self, 
             data_dir = None):
         
@@ -45,7 +82,9 @@ class ephys_data():
                 }
         
     def get_hdf5_name(self):
-        #Look for the hdf5 file in the directory
+        """
+        Look for the hdf5 file in the directory
+        """
         hdf5_name = glob.glob(
                 os.path.join(self.data_dir, '**.h5'))[0]
         if not len(hdf5_name) > 0:
@@ -99,7 +138,8 @@ class ephys_data():
                     self.off_spikes.append(self.spikes[taste][:, off_trials, :])
                     self.on_spikes.append(None)
                 
-        if len(self.all_off_trials) > 0: self.all_off_trials = np.concatenate(np.asarray(self.all_off_trials))
+        if len(self.all_off_trials) > 0: 
+            self.all_off_trials = np.concatenate(np.asarray(self.all_off_trials))
         if len(self.all_on_trials) > 0: 
             self.all_on_trials = np.concatenate(np.asarray(self.all_on_trials))
             self.laser_exists = True
@@ -108,24 +148,6 @@ class ephys_data():
         
         hf5.close()
     
-    
-    @staticmethod
-    def _calc_firing_rates(step_size, window_size, total_time, spike_array):
-        """
-        spike_array :: params :: 4D array with time as last dimension
-        """
-        bin_inds = (0,window_size)
-        total_bins = int((total_time - window_size + 1) / step_size) + 1
-        bin_list = [(bin_inds[0]+step,bin_inds[1]+step) \
-                for step in np.arange(total_bins)*step_size ]
-
-        firing_rate = np.empty((spike_array.shape[0],spike_array.shape[1],total_bins))
-        for bin_inds in bin_list:
-            firing_rate[:,:,bin_inds[0]//step_size] = \
-                    np.sum(spike_array[:,:,bin_inds[0]:bin_inds[1]], axis=-1)
-
-        return firing_rate
-
     def get_firing_rates(self):
         """
         Converts spikes to firing rates
@@ -184,7 +206,8 @@ class ephys_data():
             if not (max_val == 0):
                 for l in range(len(normal_off_firing)): #taste
                     for n in range(normal_off_firing[0].shape[1]): # trial
-                        normal_off_firing[l][m,n,:] = (normal_off_firing[l][m,n,:] - min_val)/(max_val-min_val)
+                        normal_off_firing[l][m,n,:] = 
+                        (normal_off_firing[l][m,n,:] - min_val)/(max_val-min_val)
             else:
                 for l in range(len(normal_off_firing)): #taste
                     normal_off_firing[l][m,:,:] = 0
@@ -198,7 +221,11 @@ class ephys_data():
         new_all_off_firing_array = np.empty(new_shape)
         
         for taste in range(all_off_firing_array.shape[0]):
-                new_all_off_firing_array[:, taste*all_off_firing_array.shape[2]:(taste+1)*all_off_firing_array.shape[2],:] = all_off_firing_array[taste,:,:,:] 
+                new_all_off_firing_array\
+                        [:, \
+                        taste*all_off_firing_array.shape[2]:\
+                        (taste+1)*all_off_firing_array.shape[2],\
+                        :] = all_off_firing_array[taste,:,:,:] 
         
         self.all_normal_off_firing = new_all_off_firing_array
         
@@ -215,7 +242,8 @@ class ephys_data():
                 if not (max_val == 0):
                     for l in range(len(normal_on_firing)): #taste
                         for n in range(normal_on_firing[0].shape[1]): # trial
-                            normal_on_firing[l][m,n,:] = (normal_on_firing[l][m,n,:] - min_val)/(max_val-min_val)
+                            normal_on_firing[l][m,n,:] = \
+                                    (normal_on_firing[l][m,n,:] - min_val)/(max_val-min_val)
                 else:
                     for l in range(len(normal_on_firing)): #taste
                         normal_on_firing[l][m,:,:] = 0
@@ -225,7 +253,10 @@ class ephys_data():
             new_all_on_firing_array = np.empty(new_shape)
     
             for taste in range(all_off_firing_array.shape[0]):
-                new_all_on_firing_array[:, taste*all_on_firing_array.shape[2]:(taste+1)*all_on_firing_array.shape[2],:] = all_on_firing_array[taste,:,:,:]
+                new_all_on_firing_array[:, \
+                        taste*all_on_firing_array.shape[2]:\
+                        (taste+1)*all_on_firing_array.shape[2],\
+                        :] = all_on_firing_array[taste,:,:,:]
                             
             self.all_normal_on_firing = new_all_on_firing_array
         
@@ -282,10 +313,4 @@ class ephys_data():
             #self.imshow(data[nrn,:,:])
         plt.show()
             
-    
-    def imshow(self,x):
-        """
-        Decorator function for more viewable firing rate heatmaps
-        """
-        plt.imshow(x,interpolation='nearest',aspect='auto')
         
