@@ -123,7 +123,8 @@ class ephys_data():
                 }
         
     def extract_and_process(self):
-        self.get_data()
+        self.get_lfps()
+        self.get_spikes()
         self.get_firing_rates()
 
     def get_hdf5_name(self):
@@ -138,7 +139,7 @@ class ephys_data():
             self.hdf5_name = hdf5_name
 
 
-    def get_data(self):
+    def get_spikes(self):
         """
         Extract spike arrays from specified HD5 files
         """
@@ -161,6 +162,28 @@ class ephys_data():
                     for dig_in in dig_in_list]
 
         hf5.close()
+
+    def get_lfps(self):
+        """
+        Extract parsed lfp arrays from specified HD5 files
+        """
+        self.get_hdf5_name() 
+        hf5 = tables.open_file(self.hdf5_name, 'r+')
+
+        if 'Parsed_LFP' in hf5.list_nodes('/').__str__():
+            lfp_nodes = hf5.list_nodes('/Parsed_LFP')
+            self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
+            self.all_lfp_array = \
+                    self.lfp_array.\
+                        swapaxes(1,2).\
+                        reshape(-1, self.lfp_array.shape[1],\
+                                self.lfp_array.shape[-1]).\
+                        swapaxes(0,1)
+        else:
+            raise Exception('Parsed_LFP node absent in HDF5')
+
+        hf5.close()
+
 
     def get_firing_rates(self):
         """
