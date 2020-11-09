@@ -15,5 +15,6 @@
 #   \_/\_/  |_|___/_| |_|_|_|___/\__|
 #                                    
 
+- ** Use JAX vmap to parallelize np.angle, np.abs (potentially stft calculation)
 - Add code to extract Parsed LFP from HDF5
 - Code to have overview of taste evoked LFP
