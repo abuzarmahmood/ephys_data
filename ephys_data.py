@@ -1,4 +1,5 @@
 import os
+import warnings
 import numpy as np
 import tables
 import copy
@@ -287,6 +288,12 @@ class ephys_data():
             else:
                 raise Exception('Parsed_LFP node absent in HDF5')
 
+            if 'Parsed_LFP_channels' in hf5.list_nodes('/').__str__():
+                self.parsed_lfp_channels = \
+                        hf5.root.Parsed_LFP_channels[:]
+            else:
+                raise Exception('Parsed_LFP_channels absent in HDF5')
+
     def separate_laser_lfp(self):
         """
         Separate spike arrays into laser on and off conditions
@@ -449,11 +456,15 @@ class ephys_data():
         If the appropriate json file is present in the data_dir,
         extract the electrodes for each region
         """
-        json_name = self.hdf5_name.split('.')[0] + '.json'
-        json_path = os.path.join(self.data_dir, json_name)
-        json_dict = json.load(open(json_path,'r'))
-        self.region_electrode_dict = json_dict["regions"]
-        self.region_names = [x for x in self.region_electrode_dict.keys()]
+        #json_name = self.hdf5_name.split('.')[0] + '.info'
+        #json_path = os.path.join(self.data_dir, json_name)
+        json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
+        if os.path.exists(json_path):
+            json_dict = json.load(open(json_path,'r'))
+            self.region_electrode_dict = json_dict["regions"]
+            self.region_names = [x for x in self.region_electrode_dict.keys()]
+        else:
+            raise Exception("Cannot find json file. Make sure it's present")
 
     def get_region_units(self):
         """
@@ -476,6 +487,25 @@ class ephys_data():
         self.region_units = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
 
+    def get_lfp_electrodes(self):
+        """
+        Extracts indices of lfp_electrodes according to region
+        """
+        if 'parsed_lfp_channels' not in dir(self):
+            self.get_lfps()
+        if 'region_electrode_dict' not in dir(self):
+            self.get_region_electrodes()
+
+        region_electrode_vals = [x for x in self.region_electrode_dict.values()]
+        region_ind_vec = np.zeros(len(self.parsed_lfp_channels))
+        for elec_num,elec in enumerate(self.parsed_lfp_channels):
+            for region_num, region in enumerate(region_electrode_vals):
+                if elec in region:
+                    region_ind_vec[elec_num] = region_num
+
+        self.lfp_region_electrodes = [np.where(region_ind_vec == x)[0] \
+                for x in np.unique(region_ind_vec)]
+        
     def get_stft(self, recalculate = False):
         """
         If STFT present in HDF5 then retrieve it
@@ -484,7 +514,7 @@ class ephys_data():
 
         # Check if STFT in HDF5
         with tables.open_file(self.hdf5_name,'r+') as hf5:
-            if ('/stft/stft_array' in hf5) and not recalculate:
+            if ('/stft/stft_array' in hf5) and (not recalculate):
                 self.freq_vec = hf5.root.stft.freq_vec[:]
                 self.time_vec = hf5.root.stft.time_vec[:]
                 self.stft_array = hf5.root.stft.stft_array[:] 
@@ -512,10 +542,18 @@ class ephys_data():
             stft_iters = list(product(*list(map(np.arange,self.lfp_array.shape[:3]))))
 
             # Calculate STFT over lfp array
-            stft_list = Parallel(n_jobs = mp.cpu_count()-2)\
-                    (delayed(self.calc_stft)(self.lfp_array[this_iter],
+            #try:
+            #    stft_list = Parallel(n_jobs = mp.cpu_count()-2)\
+            #            (delayed(self.calc_stft)(self.lfp_array[this_iter],
+            #                                **self.default_stft_params)\
+            #            for this_iter in tqdm(stft_iters))
+            #except:
+            #    warnings.warn("Couldn't process STFT in parallel."\
+            #            "Running serial loop")
+            stft_list = [self.calc_stft(self.lfp_array[this_iter],
                                         **self.default_stft_params)\
-                    for this_iter in tqdm(stft_iters))
+                    for this_iter in tqdm(stft_iters)]
+
 
             self.freq_vec = stft_list[0][0]
             self.time_vec = stft_list[0][1]
@@ -542,3 +580,16 @@ class ephys_data():
                 for name, obj in zip(object_names, object_list):
                     self.remove_node(os.path.join(dir_path, name), hf5)
                     hf5.create_array(dir_path, name, obj)
+
+    def get_mean_stft_amplitude(self):
+        if 'amplitude_array' not in dir(self):
+            self.get_stft()
+        if 'lfp_region_electrodes' not in dir(self):
+            self.get_lfp_electrodes()
+        
+        aggregate_amplitude = []
+        for region in self.lfp_region_electrodes:
+           aggregate_amplitude.append(\
+                   np.median(self.amplitude_array[:,region],axis=(0,1,2)))
+        return np.array(aggregate_amplitude)
+
