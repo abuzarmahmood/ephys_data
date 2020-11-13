@@ -461,8 +461,9 @@ class ephys_data():
         json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
         if os.path.exists(json_path):
             json_dict = json.load(open(json_path,'r'))
-            self.region_electrode_dict = json_dict["regions"]
-            self.region_names = [x for x in self.region_electrode_dict.keys()]
+            self.region_electrode_dict = json_dict["electrode_layout"]
+            self.region_names = [x for x in self.region_electrode_dict.keys() \
+                    if x!='emg']
         else:
             raise Exception("Cannot find json file. Make sure it's present")
 
@@ -476,13 +477,15 @@ class ephys_data():
             self.get_unit_descriptors()
 
         unit_electrodes = [x[0] for x in self.unit_descriptors]
-        region_electrode_vals = [x for x in self.region_electrode_dict.values()]
+        region_electrode_vals = [val for key,val in \
+                self.region_electrode_dict.items() if key != 'emg']
 
         region_ind_vec = np.zeros(len(unit_electrodes))
         for elec_num,elec in enumerate(unit_electrodes):
             for region_num, region in enumerate(region_electrode_vals):
-                if elec in region:
-                    region_ind_vec[elec_num] = region_num
+                for car in region:
+                    if elec in car:
+                        region_ind_vec[elec_num] = region_num
 
         self.region_units = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
@@ -496,12 +499,14 @@ class ephys_data():
         if 'region_electrode_dict' not in dir(self):
             self.get_region_electrodes()
 
-        region_electrode_vals = [x for x in self.region_electrode_dict.values()]
+        region_electrode_vals = [val for key,val in \
+                self.region_electrode_dict.items() if key != 'emg']
         region_ind_vec = np.zeros(len(self.parsed_lfp_channels))
         for elec_num,elec in enumerate(self.parsed_lfp_channels):
             for region_num, region in enumerate(region_electrode_vals):
-                if elec in region:
-                    region_ind_vec[elec_num] = region_num
+                for car in region:
+                    if elec in car:
+                        region_ind_vec[elec_num] = region_num
 
         self.lfp_region_electrodes = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
