@@ -11,11 +11,11 @@ import scipy, scipy.signal
 import glob
 import json
 import easygui
-from visualize import *
 from BAKS import BAKS
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 from itertools import product
+import lfp_processing
 
 #  ______       _                      _____        _         
 # |  ____|     | |                    |  __ \      | |        
@@ -197,6 +197,15 @@ class ephys_data():
             'baks_dt'       :   1e-3
                 }
 
+        self.default_lfp_params = {
+            'freq_bounds' : [1,300],
+            'sampling_rate' : 30000,
+            'taste_signal_choice': 'Start',
+            'fin_sampling_rate' : 1000,
+            'trial_durations' : [2000,5000]
+                }
+
+
         # Resolution has to be increased for phase of higher frequencies
         # Can be passed as kwargs to "calc_stft"
         self.default_stft_params = {
@@ -269,30 +278,41 @@ class ephys_data():
         else:
             raise Exception('No laser trials in this experiment')
 
+    def extract_lfps(self):
+        """
+        Extract LFPs from raw data files and save to HDF5
+        """
+        json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
+        if os.path.exists(json_path):
+            json_dict = json.load(open(json_path,'r'))
+            taste_dig_ins = json_dict['taste_params']['dig_ins'] 
+        else:
+            raise Exception("Cannot find json file. Make sure it's present")
+        # Add final argument to argument list
+        self.default_lfp_params.update({'dig_in_list': taste_dig_ins})
+        lfp_processing.extract_lfps(self.data_dir, **self.default_lfp_params)
+
     def get_lfps(self):
         """
         Extract parsed lfp arrays from specified HD5 files
         """
         with tables.open_file(self.hdf5_name, 'r+') as hf5: 
 
-            if 'Parsed_LFP' in hf5.list_nodes('/').__str__():
-                lfp_nodes = [node for node in hf5.list_nodes('/Parsed_LFP')\
-                        if 'dig_in' in node.__str__()]
-                self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
-                self.all_lfp_array = \
-                        self.lfp_array.\
-                            swapaxes(1,2).\
-                            reshape(-1, self.lfp_array.shape[1],\
-                                    self.lfp_array.shape[-1]).\
-                            swapaxes(0,1)
-            else:
-                raise Exception('Parsed_LFP node absent in HDF5')
+            if 'Parsed_LFP' not in hf5.list_nodes('/').__str__():
+                self.extract_lfps()
 
-            if 'Parsed_LFP_channels' in hf5.list_nodes('/').__str__():
-                self.parsed_lfp_channels = \
-                        hf5.root.Parsed_LFP_channels[:]
-            else:
-                raise Exception('Parsed_LFP_channels absent in HDF5')
+            lfp_nodes = [node for node in hf5.list_nodes('/Parsed_LFP')\
+                    if 'dig_in' in node.__str__()]
+            self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
+            self.all_lfp_array = \
+                    self.lfp_array.\
+                        swapaxes(1,2).\
+                        reshape(-1, self.lfp_array.shape[1],\
+                                self.lfp_array.shape[-1]).\
+                        swapaxes(0,1)
+
+            self.parsed_lfp_channels = \
+                    hf5.root.Parsed_LFP_channels[:]
 
     def separate_laser_lfp(self):
         """
