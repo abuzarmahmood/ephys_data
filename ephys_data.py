@@ -292,15 +292,40 @@ class ephys_data():
         self.default_lfp_params.update({'dig_in_list': taste_dig_ins})
         lfp_processing.extract_lfps(self.data_dir, **self.default_lfp_params)
 
+    def get_lfp_channels(self):
+        """
+        Extract Parsed_LFP_channels
+        This is done separately from "get_lfps" to avoid
+        the overhead of reading the large lfp arrays
+        """
+        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+            if '/Parsed_LFP_channels' not in hf5:
+                extract_bool = True
+            else:
+                extract_bool = False
+
+        if extract_bool:
+            self.extract_lfps()
+
+        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+            self.parsed_lfp_channels = \
+                    hf5.root.Parsed_LFP_channels[:]
+
     def get_lfps(self):
         """
         Extract parsed lfp arrays from specified HD5 files
         """
         with tables.open_file(self.hdf5_name, 'r+') as hf5: 
 
-            if 'Parsed_LFP' not in hf5.list_nodes('/').__str__():
-                self.extract_lfps()
+            if '/Parsed_LFP' not in hf5:
+                extract_bool = True
+            else:
+                extract_bool = False
 
+        if extract_bool:
+            self.extract_lfps()
+
+        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
             lfp_nodes = [node for node in hf5.list_nodes('/Parsed_LFP')\
                     if 'dig_in' in node.__str__()]
             self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
@@ -311,8 +336,6 @@ class ephys_data():
                                 self.lfp_array.shape[-1]).\
                         swapaxes(0,1)
 
-            self.parsed_lfp_channels = \
-                    hf5.root.Parsed_LFP_channels[:]
 
     def separate_laser_lfp(self):
         """
@@ -496,7 +519,7 @@ class ephys_data():
         if "unit_descriptors" not in dir(self):
             self.get_unit_descriptors()
 
-        unit_electrodes = [x[0] for x in self.unit_descriptors]
+        unit_electrodes = [x['electrode_number'] for x in self.unit_descriptors]
         region_electrode_vals = [val for key,val in \
                 self.region_electrode_dict.items() if key != 'emg']
 
@@ -515,7 +538,7 @@ class ephys_data():
         Extracts indices of lfp_electrodes according to region
         """
         if 'parsed_lfp_channels' not in dir(self):
-            self.get_lfps()
+            self.get_lfp_channels()
         if 'region_electrode_dict' not in dir(self):
             self.get_region_electrodes()
 
@@ -558,6 +581,7 @@ class ephys_data():
                 hf5.flush()
 
         if self.calc_stft_bool:
+            print('Calculating STFT' )
 
             # Get LFPs to calculate STFT
             if "lfp_array" not in dir(self):
