@@ -122,24 +122,24 @@ class ephys_data():
         return firing_rate_array
 
     @staticmethod
-    def get_hdf5_name(data_dir):
+    def get_hdf5_path(data_dir):
         """
         Look for the hdf5 file in the directory
         """
-        hdf5_name = glob.glob(
+        hdf5_path = glob.glob(
                 os.path.join(data_dir, '**.h5'))
-        if not len(hdf5_name) > 0:
+        if not len(hdf5_path) > 0:
             raise Exception('No HDF5 file detected')
-        elif len(hdf5_name) > 1:
+        elif len(hdf5_path) > 1:
             selection_list = ['{}) {} \n'.format(num,os.path.basename(file)) \
-                    for num,file in enumerate(hdf5_name)]
+                    for num,file in enumerate(hdf5_path)]
             selection_string = \
                     'Multiple HDF5 files detected, please select a number:\n{}'.\
                             format("".join(selection_list))
             file_selection = input(selection_string)
-            return hdf5_name[int(file_selection)]
+            return hdf5_path[int(file_selection)]
         else:
-            return hdf5_name[0]
+            return hdf5_path[0]
 
     # Convert list to array
     @staticmethod
@@ -175,9 +175,15 @@ class ephys_data():
                     'Please select directory with HDF5 file')
         else:
             self.data_dir =     data_dir
-            self.hdf5_name =    self.get_hdf5_name(data_dir) 
+            self.hdf5_path =    self.get_hdf5_path(data_dir) 
+            self.hdf5_name =    os.path.basename(self.hdf5_path) 
 
             self.spikes = None
+
+        # Create environemnt variable to allow program to know
+        # if file is currently accessed
+        # Created for multiprocessing of fits
+        #os.environ[self.hdf5_name]="0"
         
         self.firing_rate_params = {
             'type'          :   None,
@@ -216,6 +222,13 @@ class ephys_data():
                 'time_range_tuple' : (0,5)
                 }
          
+    #class access:
+    #    def __init__(self, key_name):
+    #        os.environ[key_name] = '0'
+
+    #    def check(self):
+    #        access_bool = 
+
     def extract_and_process(self):
         self.get_unit_descriptors()
         self.get_spikes()
@@ -232,11 +245,11 @@ class ephys_data():
         """
         Extract unit descriptors from HDF5 file
         """
-        with tables.open_file(self.hdf5_name, 'r+') as hf5_file:
+        with tables.open_file(self.hdf5_path, 'r+') as hf5_file:
             self.unit_descriptors = hf5_file.root.unit_descriptor[:]
 
     def check_laser(self):
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
             dig_in_list = \
                 [x for x in hf5.list_nodes('/spike_trains') \
                 if 'dig_in' in x.__str__()]
@@ -254,11 +267,13 @@ class ephys_data():
         """
         Extract spike arrays from specified HD5 files
         """
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
-            
-            dig_in_list = \
-                [x for x in hf5.list_nodes('/spike_trains') \
-                if 'dig_in' in x.__str__()]
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
+            if '/spike_trains' in hf5:
+                dig_in_list = \
+                    [x for x in hf5.list_nodes('/spike_trains') \
+                    if 'dig_in' in x.__str__()]
+            else:
+                raise Exception('No spike trains found in HF5')
             
             self.spikes = [dig_in.spike_array[:] for dig_in in dig_in_list]
 
@@ -280,7 +295,8 @@ class ephys_data():
 
     def extract_lfps(self):
         """
-        Extract LFPs from raw data files and save to HDF5
+        Wrapper function to extract LFPs from raw data files and save to HDF5
+        Loads relevant information for .info file
         """
         json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
         if os.path.exists(json_path):
@@ -298,7 +314,7 @@ class ephys_data():
         This is done separately from "get_lfps" to avoid
         the overhead of reading the large lfp arrays
         """
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
             if '/Parsed_LFP_channels' not in hf5:
                 extract_bool = True
             else:
@@ -307,17 +323,19 @@ class ephys_data():
         if extract_bool:
             self.extract_lfps()
 
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
             self.parsed_lfp_channels = \
                     hf5.root.Parsed_LFP_channels[:]
 
-    def get_lfps(self):
+    def get_lfps(self, re_extract = False):
         """
-        Extract parsed lfp arrays from specified HD5 files
+        Wrapper function to either
+        - initiate LFP extraction, or
+        - pull LFP arrays from HDF5 file
         """
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
 
-            if '/Parsed_LFP' not in hf5:
+            if ('/Parsed_LFP' not in hf5) or (re_extract == True):
                 extract_bool = True
             else:
                 extract_bool = False
@@ -325,7 +343,7 @@ class ephys_data():
         if extract_bool:
             self.extract_lfps()
 
-        with tables.open_file(self.hdf5_name, 'r+') as hf5: 
+        with tables.open_file(self.hdf5_path, 'r+') as hf5: 
             lfp_nodes = [node for node in hf5.list_nodes('/Parsed_LFP')\
                     if 'dig_in' in node.__str__()]
             self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
@@ -499,7 +517,7 @@ class ephys_data():
         If the appropriate json file is present in the data_dir,
         extract the electrodes for each region
         """
-        #json_name = self.hdf5_name.split('.')[0] + '.info'
+        #json_name = self.hdf5_path.split('.')[0] + '.info'
         #json_path = os.path.join(self.data_dir, json_name)
         json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
         if os.path.exists(json_path):
@@ -554,20 +572,26 @@ class ephys_data():
         self.lfp_region_electrodes = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
         
-    def get_stft(self, recalculate = False):
+    def get_stft(self, recalculate = False, dat_type = ['amplitude']):
         """
         If STFT present in HDF5 then retrieve it
         If not, then calculate it and save it into HDF5 file
         """
 
         # Check if STFT in HDF5
-        with tables.open_file(self.hdf5_name,'r+') as hf5:
+        # If present, only load what user has asked for
+        with tables.open_file(self.hdf5_path,'r+') as hf5:
             if ('/stft/stft_array' in hf5) and (not recalculate):
                 self.freq_vec = hf5.root.stft.freq_vec[:]
                 self.time_vec = hf5.root.stft.time_vec[:]
-                self.stft_array = hf5.root.stft.stft_array[:] 
-                self.amplitude_array = hf5.root.stft.amplitude_array[:] 
-                self.phase_array = hf5.root.stft.phase_array[:]
+                if 'all' in dat_type:
+                    dat_type = ['raw','amplitude','phase']
+                if 'raw' in dat_type:
+                    self.stft_array = hf5.root.stft.stft_array[:] 
+                if 'amplitude' in dat_type:
+                    self.amplitude_array = hf5.root.stft.amplitude_array[:] 
+                if 'phase' in dat_type:
+                    self.phase_array = hf5.root.stft.phase_array[:]
 
                 # If everything there, then don't calculate
                 # Unless forced to
@@ -625,7 +649,7 @@ class ephys_data():
             object_list = [self.freq_vec, self.time_vec,\
                     self.stft_array, self.amplitude_array, self.phase_array]
 
-            with tables.open_file(self.hdf5_name,'r+') as hf5:
+            with tables.open_file(self.hdf5_path,'r+') as hf5:
                 for name, obj in zip(object_names, object_list):
                     self.remove_node(os.path.join(dir_path, name), hf5)
                     hf5.create_array(dir_path, name, obj)
