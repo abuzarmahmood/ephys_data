@@ -2,7 +2,7 @@ import numpy as np
 import pylab as plt
 from scipy.stats import zscore
 
-def _raster(spike_array):
+def raster(spike_array):
     inds = np.where(spike_array)
     fig, ax = plt.subplots()
     ax.scatter(inds[1],inds[0])
@@ -61,25 +61,27 @@ def firing_overview(data, t_vec = None, y_values_vec = None,
 
     # Plot firing rates
     square_len = np.int(np.ceil(np.sqrt(num_nrns)))
-    fig, ax = plt.subplots(square_len,square_len, sharex='all',sharey='all')
+    row_count = int(np.ceil(num_nrns/square_len))
+    fig, ax = plt.subplots(row_count, square_len, sharex='all',sharey='all')
     
-    nd_idx_objs = []
-    for dim in range(ax.ndim):
-        this_shape = np.ones(len(ax.shape))
-        this_shape[dim] = ax.shape[dim]
-        nd_idx_objs.append(
-                np.broadcast_to( 
-                    np.reshape(
-                        np.arange(ax.shape[dim]),
-                        this_shape.astype('int')), ax.shape).flatten())
+    nd_idx_objs = list(np.ndindex(ax.shape))
+    #nd_idx_objs = []
+    #for dim in range(ax.ndim):
+    #    this_shape = np.ones(len(ax.shape))
+    #    this_shape[dim] = ax.shape[dim]
+    #    nd_idx_objs.append(
+    #            np.broadcast_to( 
+    #                np.reshape(
+    #                    np.arange(ax.shape[dim]),
+    #                    this_shape.astype('int')), ax.shape).flatten())
     
     x,y = np.meshgrid(t_vec, y_values_vec)
     if subplot_labels is None:
         subplot_labels = np.zeros(num_nrns)
     if y_values_vec is None:
         y_values_vec = np.arange(data.shape[1])
-    for nrn in range(num_nrns):
-        plt.sca(ax[nd_idx_objs[0][nrn],nd_idx_objs[1][nrn]])
+    for this_ind,nrn in zip(nd_idx_objs,range(num_nrns)):
+        plt.sca(ax[this_ind[0],this_ind[1]])
         plt.gca().set_title('{}:{}'.format(int(subplot_labels[nrn]),nrn))
         plt.gca().pcolormesh(x, y,
                 data[nrn],cmap=cmap,
