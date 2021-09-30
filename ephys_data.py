@@ -214,11 +214,11 @@ class ephys_data():
 
         # Resolution has to be increased for phase of higher frequencies
         # Can be passed as kwargs to "calc_stft"
-        self.default_stft_params = {
+        self.stft_params = {
                 'Fs' : 1000, 
-                'signal_window' : 500, 
+                'signal_window' : 500,
                 'window_overlap' : 499,
-                'max_freq' : 20, 
+                'max_freq' : 20,
                 'time_range_tuple' : (0,5)
                 }
          
@@ -255,13 +255,26 @@ class ephys_data():
                 if 'dig_in' in x.__str__()]
 
             # Mark whether laser exists or not
-            self.laser_exists = sum([dig_in.__contains__('laser_durations') \
+            self.laser_durations_exists = sum([dig_in.__contains__('laser_durations') \
                 for dig_in in dig_in_list]) > 0
         
             # If it does, pull out laser durations
-            if self.laser_exists:
+            if self.laser_durations_exists:
                 self.laser_durations = [dig_in.laser_durations[:] \
                         for dig_in in dig_in_list]
+
+                non_zero_laser_durations = np.sum(self.laser_durations) > 0
+
+            # If laser_durations exists, only non_zero durations 
+            # will indicate laser
+            # If it doesn't exist, then mark laser as absent
+            if self.laser_durations_exists:
+                if non_zero_laser_durations:
+                    self.laser_exists = True
+                else:
+                    self.laser_exists = False
+            else:
+                self.laser_exists = False
 
     def get_spikes(self):
         """
@@ -346,6 +359,7 @@ class ephys_data():
         with tables.open_file(self.hdf5_path, 'r+') as hf5: 
             lfp_nodes = [node for node in hf5.list_nodes('/Parsed_LFP')\
                     if 'dig_in' in node.__str__()]
+            # Account for parsed LFPs being different 
             self.lfp_array = np.asarray([node[:] for node in lfp_nodes])
             self.all_lfp_array = \
                     self.lfp_array.\
@@ -541,6 +555,20 @@ class ephys_data():
         region_electrode_vals = [val for key,val in \
                 self.region_electrode_dict.items() if key != 'emg']
 
+
+        self.car_names = car_name
+        self.car_electrodes = car_electrodes
+
+        car_ind_vec = np.zeros(len(unit_electrodes))
+        for num, val in enumerate(self.car_electrodes):
+            for elec_num,elec in enumerate(unit_electrodes):
+                if elec in val:
+                    # This tells you which car group each neuron is in
+                    car_ind_vec[elec_num] = num 
+
+        self.car_units = [np.where(car_ind_vec == x)[0] \
+                for x in np.unique(car_ind_vec)]
+
         region_ind_vec = np.zeros(len(unit_electrodes))
         for elec_num,elec in enumerate(unit_electrodes):
             for region_num, region in enumerate(region_electrode_vals):
@@ -618,13 +646,13 @@ class ephys_data():
             #try:
             #    stft_list = Parallel(n_jobs = mp.cpu_count()-2)\
             #            (delayed(self.calc_stft)(self.lfp_array[this_iter],
-            #                                **self.default_stft_params)\
+            #                                **self.stft_params)\
             #            for this_iter in tqdm(stft_iters))
             #except:
             #    warnings.warn("Couldn't process STFT in parallel."\
             #            "Running serial loop")
             stft_list = [self.calc_stft(self.lfp_array[this_iter],
-                                        **self.default_stft_params)\
+                                        **self.stft_params)\
                     for this_iter in tqdm(stft_iters)]
 
 
