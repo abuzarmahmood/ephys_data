@@ -555,6 +555,13 @@ class ephys_data():
         region_electrode_vals = [val for key,val in \
                 self.region_electrode_dict.items() if key != 'emg']
 
+        car_name = []
+        car_electrodes = []
+        for key, val in self.region_electrode_dict.items():
+            if key != 'emg':
+                for num, this_car in enumerate(val):
+                    car_electrodes.append(this_car)
+                    car_name.append(key+str(num))
 
         self.car_names = car_name
         self.car_electrodes = car_electrodes
@@ -578,6 +585,26 @@ class ephys_data():
 
         self.region_units = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
+
+    def return_region_spikes(self, region_name = 'all'):
+        if 'region_names' not in dir(self):
+            self.get_region_units()
+        if self.spikes is None:
+            self.get_spikes()
+
+        if not region_name == 'all':
+            region_ind = [num for num,x in enumerate(self.region_names) \
+                    if x == region_name]
+            if not len(region_ind) == 1 :
+                raise Exception('Region name not found, or too many matches found, '\
+                'acceptable options are' + \
+                '\n' + f"===> {self.region_names, 'all'}")
+            else:
+                this_region_units = self.region_units[region_ind[0]]
+                region_spikes = [x[:,this_region_units] for x in self.spikes] 
+                return np.array(region_spikes)
+        else:
+            return np.array(self.spikes)
 
     def get_lfp_electrodes(self):
         """
