@@ -2,10 +2,11 @@ import numpy as np
 import pylab as plt
 from scipy.stats import zscore
 
-def raster(spike_array):
-    inds = np.where(spike_array)
-    fig, ax = plt.subplots()
-    ax.scatter(inds[1],inds[0])
+def raster(ax, spike_array, marker = 'o', color = None):
+    inds = np.where(spike_array)         
+    if ax is None:                       
+        fig, ax = plt.subplots()         
+    ax.scatter(inds[1],inds[0], marker = marker, color = color)
     return ax
 
 def imshow(x, cmap = 'viridis'):
@@ -16,14 +17,14 @@ def imshow(x, cmap = 'viridis'):
             interpolation='nearest',aspect='auto', 
             origin = 'lower', cmap = cmap)
 
-def gen_square_subplots(num, sharex = False, sharey = False):
+def gen_square_subplots(num, figsize = None, sharex = False, sharey = False):
     """
     number of subplots to generate
     """
     square_len = int(np.ceil(np.sqrt(num)))
     row_num = int(np.ceil(num / square_len))
     fig, ax = plt.subplots(row_num, square_len, 
-            sharex = sharex, sharey = sharey)
+            sharex = sharex, sharey = sharey, figsize = figsize)
     return fig, ax
 
 def firing_overview(data, t_vec = None, y_values_vec = None,
@@ -57,23 +58,20 @@ def firing_overview(data, t_vec = None, y_values_vec = None,
     if data.shape[-1] != len(t_vec):
         raise Exception('Time dimension in data needs to be'\
             'equal to length of time_vec')
+
     num_nrns = data.shape[0]
 
     # Plot firing rates
     square_len = np.int(np.ceil(np.sqrt(num_nrns)))
     row_count = int(np.ceil(num_nrns/square_len))
     fig, ax = plt.subplots(row_count, square_len, sharex='all',sharey='all')
+    # Account for case where row and cols are both 1
+    if not isinstance(ax,np.array([]).__class__):
+        ax = np.array(ax)[np.newaxis, np.newaxis]
+    if ax.ndim < 2:
+        ax = ax[:,np.newaxis]
     
     nd_idx_objs = list(np.ndindex(ax.shape))
-    #nd_idx_objs = []
-    #for dim in range(ax.ndim):
-    #    this_shape = np.ones(len(ax.shape))
-    #    this_shape[dim] = ax.shape[dim]
-    #    nd_idx_objs.append(
-    #            np.broadcast_to( 
-    #                np.reshape(
-    #                    np.arange(ax.shape[dim]),
-    #                    this_shape.astype('int')), ax.shape).flatten())
     
     x,y = np.meshgrid(t_vec, y_values_vec)
     if subplot_labels is None:
@@ -86,5 +84,6 @@ def firing_overview(data, t_vec = None, y_values_vec = None,
         plt.gca().pcolormesh(x, y,
                 data[nrn],cmap=cmap,
                 vmin = min_val[nrn], vmax = max_val[nrn])
-    return ax
+
+    return fig,ax
 
