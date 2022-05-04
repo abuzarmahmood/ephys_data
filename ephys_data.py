@@ -526,6 +526,13 @@ class ephys_data():
         else:
             raise Exception('No laser trials in this experiment')
 
+    def get_info_dict(self):
+        json_path = glob.glob(os.path.join(self.data_dir, "**.info"))[0] 
+        if os.path.exists(json_path):
+            self.info_dict = json_dict = json.load(open(json_path,'r'))
+        else:
+            raise Exception('No info file found')
+
     def get_region_electrodes(self):
         """
         If the appropriate json file is present in the data_dir,
