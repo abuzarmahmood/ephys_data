@@ -170,6 +170,8 @@ class ephys_data():
         data_dirs : where to look for hdf5 file
             : get_data() loads data from this directory
         """
+        self.lfp_processing = lfp_processing
+
         if data_dir is None:
             self.data_dir = easygui.diropenbox(
                     'Please select directory with HDF5 file')
@@ -634,7 +636,11 @@ class ephys_data():
         self.lfp_region_electrodes = [np.where(region_ind_vec == x)[0] \
                 for x in np.unique(region_ind_vec)]
         
-    def get_stft(self, recalculate = False, dat_type = ['amplitude']):
+    def get_stft(
+            self, 
+            recalculate = False, 
+            dat_type = ['amplitude'],
+            write_out = True):
         """
         If STFT present in HDF5 then retrieve it
         If not, then calculate it and save it into HDF5 file
@@ -642,29 +648,33 @@ class ephys_data():
 
         # Check if STFT in HDF5
         # If present, only load what user has asked for
-        with tables.open_file(self.hdf5_path,'r+') as hf5:
-            if ('/stft/stft_array' in hf5) and (not recalculate):
-                self.freq_vec = hf5.root.stft.freq_vec[:]
-                self.time_vec = hf5.root.stft.time_vec[:]
-                if 'all' in dat_type:
-                    dat_type = ['raw','amplitude','phase']
-                if 'raw' in dat_type:
-                    self.stft_array = hf5.root.stft.stft_array[:] 
-                if 'amplitude' in dat_type:
-                    self.amplitude_array = hf5.root.stft.amplitude_array[:] 
-                if 'phase' in dat_type:
-                    self.phase_array = hf5.root.stft.phase_array[:]
+        if not recalculate:
+            self.calc_stft_bool = 0
+            with tables.open_file(self.hdf5_path,'r+') as hf5:
+                if ('/stft/stft_array' in hf5) and (not recalculate):
+                    self.freq_vec = hf5.root.stft.freq_vec[:]
+                    self.time_vec = hf5.root.stft.time_vec[:]
+                    if 'all' in dat_type:
+                        dat_type = ['raw','amplitude','phase']
+                    if 'raw' in dat_type:
+                        self.stft_array = hf5.root.stft.stft_array[:] 
+                    if 'amplitude' in dat_type:
+                        self.amplitude_array = hf5.root.stft.amplitude_array[:] 
+                    if 'phase' in dat_type:
+                        self.phase_array = hf5.root.stft.phase_array[:]
 
-                # If everything there, then don't calculate
-                # Unless forced to
-                self.calc_stft_bool = 0 
-                
-            else:
-                self.calc_stft_bool = 1
+                    # If everything there, then don't calculate
+                    # Unless forced to
+                    self.calc_stft_bool = 0 
+                    
+                else:
+                    self.calc_stft_bool = 1
 
-            if ('/stft' not in hf5):
-                hf5.create_group('/','stft')
-                hf5.flush()
+                if ('/stft' not in hf5):
+                    hf5.create_group('/','stft')
+                    hf5.flush()
+        else:
+            self.calc_stft_bool = 1
 
         if self.calc_stft_bool:
             print('Calculating STFT' )
@@ -677,17 +687,17 @@ class ephys_data():
             stft_iters = list(product(*list(map(np.arange,self.lfp_array.shape[:3]))))
 
             # Calculate STFT over lfp array
-            #try:
-            #    stft_list = Parallel(n_jobs = mp.cpu_count()-2)\
-            #            (delayed(self.calc_stft)(self.lfp_array[this_iter],
-            #                                **self.stft_params)\
-            #            for this_iter in tqdm(stft_iters))
-            #except:
-            #    warnings.warn("Couldn't process STFT in parallel."\
-            #            "Running serial loop")
-            stft_list = [self.calc_stft(self.lfp_array[this_iter],
-                                        **self.stft_params)\
-                    for this_iter in tqdm(stft_iters)]
+            try:
+                stft_list = Parallel(n_jobs = mp.cpu_count()-2)\
+                        (delayed(self.calc_stft)(self.lfp_array[this_iter],
+                                            **self.stft_params)\
+                        for this_iter in tqdm(stft_iters))
+            except:
+                warnings.warn("Couldn't process STFT in parallel."\
+                        "Running serial loop")
+            #stft_list = [self.calc_stft(self.lfp_array[this_iter],
+            #                            **self.stft_params)\
+            #        for this_iter in tqdm(stft_iters)]
 
 
             self.freq_vec = stft_list[0][0]
@@ -705,16 +715,38 @@ class ephys_data():
             self.phase_array = self.convert_to_array(phase_list, stft_iters)
             del phase_list
 
-            object_names = ['freq_vec', 'time_vec', 'stft_array',\
-                    'amplitude_array', 'phase_array']
-            dir_path = '/stft'
-            object_list = [self.freq_vec, self.time_vec,\
-                    self.stft_array, self.amplitude_array, self.phase_array]
+            # After recalculating, only keep what was asked for
+            if 'all' in dat_type:
+                dat_type = ['raw','amplitude','phase']
+            if 'raw' not in dat_type:
+                del self.stft_array
+            if 'amplitude' not in dat_type:
+                del self.amplitude_array
+            if 'phase' not in dat_type:
+                del self.phase_array
 
-            with tables.open_file(self.hdf5_path,'r+') as hf5:
-                for name, obj in zip(object_names, object_list):
-                    self.remove_node(os.path.join(dir_path, name), hf5)
-                    hf5.create_array(dir_path, name, obj)
+            if write_out:
+                object_names = ['freq_vec', 'time_vec', 'stft_array',\
+                        'amplitude_array', 'phase_array']
+                dir_path = '/stft'
+                object_list = [self.freq_vec, self.time_vec,\
+                        self.stft_array, self.amplitude_array, self.phase_array]
+
+                with tables.open_file(self.hdf5_path,'r+') as hf5:
+                    for name, obj in zip(object_names, object_list):
+                        self.remove_node(os.path.join(dir_path, name), hf5)
+                        hf5.create_array(dir_path, name, obj)
+
+    def return_region_lfps(self):
+        """
+        Return list containing LFPs for each region and region names
+        """
+        if 'lfp_array' not in dir(self):
+            self.get_lfps()
+        if 'lfp_region_electrodes' not in dir(self):
+            self.get_lfp_electrodes()
+        region_lfp = [self.lfp_array[:,x,:,:] for x in self.lfp_region_electrodes]
+        return region_lfp, self.region_names
 
     def get_mean_stft_amplitude(self):
         if 'amplitude_array' not in dir(self):

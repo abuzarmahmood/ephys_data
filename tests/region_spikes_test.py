@@ -14,7 +14,7 @@ if args.dir_name:
 else:
     raise Exception('dir_name not provided')
 
-dir_path = '/media/bigdata/Abuzar_Data/bla_gc/AM11/AM11_4Tastes_191029_171714/'
+#dir_path = '/media/bigdata/Abuzar_Data/bla_gc/AM11/AM11_4Tastes_191029_171714/'
 
 dat = ephys_data(dir_path)
 dat.get_region_units()
