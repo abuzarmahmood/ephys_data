@@ -684,7 +684,11 @@ class ephys_data():
                 self.get_lfps()
 
             # Generate list of individual trials to be fed into STFT function
-            stft_iters = list(product(*list(map(np.arange,self.lfp_array.shape[:3]))))
+            stft_iters = list(
+                    product(
+                        *list(map(np.arange,self.lfp_array.shape[:3]))
+                        )
+                    )
 
             # Calculate STFT over lfp array
             try:
@@ -747,6 +751,34 @@ class ephys_data():
             self.get_lfp_electrodes()
         region_lfp = [self.lfp_array[:,x,:,:] for x in self.lfp_region_electrodes]
         return region_lfp, self.region_names
+
+    def return_representative_lfp_channels(self):
+        """
+        Return one electrode per region that is closest to the mean
+        """
+        # Region lfps shape : (n_tastes, n_channels, n_trials, n_timepoints)
+        region_lfps, region_names = self.return_region_lfps()
+
+        # Sort by region_names to make sure order is always same
+        sort_inds = np.argsort(region_names)
+        region_lfps = [region_lfps[x] for x in sort_inds]
+        region_names = [region_names[x] for x in sort_inds]
+
+        # Find channel per region closest to mean
+        # mean_region_lfp shape : (n_regions, n_tastes, n_trials, n_timepoints)
+        mean_region_lfp = np.stack([np.mean(x, axis=1) for x in region_lfps])
+
+        # Find channel per region closest to mean
+        wanted_channel_inds = []
+        for this_mean, this_region in zip(mean_region_lfp, region_lfps):
+            diff_lfp = np.abs(this_region - this_mean[:,np.newaxis,:,:])
+            mean_diff_lfp = diff_lfp.mean(axis=(0,2,3))
+            min_diff_lfp = np.argmin(mean_diff_lfp)
+            wanted_channel_inds.append(min_diff_lfp)
+
+        wanted_lfp_electrodes = np.array([x[:,y] \
+                for x,y in zip(region_lfps, wanted_channel_inds)])
+        return wanted_channel_inds, wanted_lfp_electrodes, region_names
 
     def get_mean_stft_amplitude(self):
         if 'amplitude_array' not in dir(self):
