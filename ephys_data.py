@@ -4,7 +4,6 @@ import numpy as np
 import tables
 import copy
 import multiprocessing as mp
-import pylab as plt
 from scipy.special import gamma
 from scipy.stats import zscore
 import scipy, scipy.signal
@@ -41,18 +40,27 @@ class ephys_data():
 
 
     @staticmethod
-    def calc_stft(trial, max_freq,time_range_tuple,\
-                Fs,signal_window,window_overlap):
+    def calc_stft(
+        trial, 
+        max_freq,
+        time_range_tuple,
+        Fs,
+        signal_window,
+        window_overlap
+        ):
         """
         trial : 1D array
         max_freq : where to lob off the transform
         time_range_tuple : (start,end) in seconds, time_lims of spectrogram
                                 from start of trial snippet`
+        Fs : sampling rate
+        signal_window : window size for spectrogram
+        window_overlap : overlap between windows
         """
         f,t,this_stft = scipy.signal.stft(
                     scipy.signal.detrend(trial),
                     fs=Fs,
-                    window='hanning',
+                    window='hann',
                     nperseg=signal_window,
                     noverlap=signal_window-(signal_window-window_overlap))
         this_stft =  this_stft[np.where(f<max_freq)[0]]
@@ -149,7 +157,7 @@ class ephys_data():
                     tuple((*(np.max(np.array(iter_inds),axis=0) + 1),
                             *iterator[0].shape)),
                         dtype=np.dtype(iterator[0].flatten()[0]))
-        for iter_num, this_iter in tqdm(enumerate(iter_inds)):
+        for iter_num, this_iter in enumerate(tqdm(iter_inds)):
             temp_array[this_iter] = iterator[iter_num]
         return temp_array
 
@@ -547,7 +555,7 @@ class ephys_data():
             json_dict = json.load(open(json_path,'r'))
             self.region_electrode_dict = json_dict["electrode_layout"]
             self.region_names = [x for x in self.region_electrode_dict.keys() \
-                    if x!='emg']
+                    if 'emg' not in x]
         else:
             raise Exception("Cannot find json file. Make sure it's present")
 
@@ -615,6 +623,27 @@ class ephys_data():
         else:
             return np.array(self.spikes)
 
+    def get_region_firing(self, region_name = 'all'):
+        if 'region_units' not in dir(self):
+            self.get_region_units()
+        if 'firing_array' not in dir(self):
+            self.get_firing_rates()
+
+        if not region_name == 'all':
+            region_ind = [num for num,x in enumerate(self.region_names) \
+                    if x == region_name]
+            if not len(region_ind) == 1 :
+                raise Exception('Region name not found, or too many matches found, '\
+                'acceptable options are' + \
+                '\n' + f"===> {self.region_names, 'all'}")
+            else:
+                this_region_units = self.region_units[region_ind[0]]
+                region_firing = [x[this_region_units] for x in self.firing_array] 
+                return np.array(region_firing)
+        else:
+            return np.array(self.firing_array)
+
+
     def get_lfp_electrodes(self):
         """
         Extracts indices of lfp_electrodes according to region
@@ -644,6 +673,11 @@ class ephys_data():
         """
         If STFT present in HDF5 then retrieve it
         If not, then calculate it and save it into HDF5 file
+
+        Inputs:
+            recalculate: bool, if True then recalculate STFT
+            dat_type: list of strings, options are 'raw', 'amplitude', 'phase'
+            write_out: bool, if True then write out STFT to HDF5 file
         """
 
         # Check if STFT in HDF5
@@ -654,8 +688,6 @@ class ephys_data():
                 if ('/stft/stft_array' in hf5) and (not recalculate):
                     self.freq_vec = hf5.root.stft.freq_vec[:]
                     self.time_vec = hf5.root.stft.time_vec[:]
-                    if 'all' in dat_type:
-                        dat_type = ['raw','amplitude','phase']
                     if 'raw' in dat_type:
                         self.stft_array = hf5.root.stft.stft_array[:] 
                     if 'amplitude' in dat_type:
@@ -720,26 +752,35 @@ class ephys_data():
             del phase_list
 
             # After recalculating, only keep what was asked for
-            if 'all' in dat_type:
-                dat_type = ['raw','amplitude','phase']
-            if 'raw' not in dat_type:
+            object_names = ['freq_vec', 'time_vec']
+            object_list = [self.freq_vec, self.time_vec]
+
+            if 'raw' in dat_type:
+                object_names.append('stft_array')
+                object_list.append(self.stft_array)
+            else:
                 del self.stft_array
-            if 'amplitude' not in dat_type:
+
+            if 'amplitude' in dat_type:
+                object_names.append('amplitude_array')
+                object_list.append(self.amplitude_array)
+            else:
                 del self.amplitude_array
-            if 'phase' not in dat_type:
+
+            if 'phase' in dat_type:
+                object_names.append('phase_array')
+                object_list.append(self.phase_array)
+            else:
                 del self.phase_array
 
             if write_out:
-                object_names = ['freq_vec', 'time_vec', 'stft_array',\
-                        'amplitude_array', 'phase_array']
                 dir_path = '/stft'
-                object_list = [self.freq_vec, self.time_vec,\
-                        self.stft_array, self.amplitude_array, self.phase_array]
 
                 with tables.open_file(self.hdf5_path,'r+') as hf5:
                     for name, obj in zip(object_names, object_list):
                         self.remove_node(os.path.join(dir_path, name), hf5)
                         hf5.create_array(dir_path, name, obj)
+
 
     def return_region_lfps(self):
         """

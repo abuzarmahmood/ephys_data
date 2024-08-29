@@ -62,7 +62,7 @@ def firing_overview(data, t_vec = None, y_values_vec = None,
     num_nrns = data.shape[0]
 
     # Plot firing rates
-    square_len = np.int(np.ceil(np.sqrt(num_nrns)))
+    square_len = int(np.ceil(np.sqrt(num_nrns)))
     row_count = int(np.ceil(num_nrns/square_len))
     fig, ax = plt.subplots(row_count, square_len, sharex='all',sharey='all')
     # Account for case where row and cols are both 1

@@ -509,11 +509,17 @@ def extract_emgs(dir_name,
     hf5.flush()
     hf5.close()
 
-def return_good_lfp_trial_inds(data, MAD_threshold = 3, summed_MAD_threshold = 3):
-    """Return boolean array of good trials (for all channels) based on MAD threshold
-    data : shape (n_channels, n_trials, n_timepoints)
-    MAD_threshold : number of MADs to use as threshold for individual timepoints
-    summed_MAD_threshold : number of MADs to use as threshold for summed MADs
+def return_good_lfp_trial_inds(data, MAD_threshold = 3,):
+    """
+    Return boolean array of good trials (for all channels) based on MAD threshold
+    Remove trials based on deviation from median LFP per trial
+
+    Inputs:
+        data : shape (n_channels, n_trials, n_timepoints)
+        MAD_threshold : number of MADs to use as threshold for individual timepoints
+
+    Outputs:
+        good_trials_bool : boolean array of good trials
     """
     lfp_median = np.median(data, axis=1)
     lfp_MAD = MAD(data, axis=1)
@@ -529,12 +535,11 @@ def return_good_lfp_trial_inds(data, MAD_threshold = 3, summed_MAD_threshold = 3
     good_trials_bool = np.all(good_trials_bool, axis=0)
     return good_trials_bool
 
-def return_good_lfp_trials(data, MAD_threshold = 3, summed_MAD_threshold = 3):
+def return_good_lfp_trials(data, MAD_threshold = 3,): 
     """Return good trials (for all channels) based on MAD threshold
     data : shape (n_channels, n_trials, n_timepoints)
     MAD_threshold : number of MADs to use as threshold for individual timepoints
-    summed_MAD_threshold : number of MADs to use as threshold for summed MADs
     """
-    good_trials_bool = return_good_lfp_trial_inds(data, MAD_threshold, summed_MAD_threshold)
+    good_trials_bool = return_good_lfp_trial_inds(data, MAD_threshold,)
     good_lfp_data = data.copy()
     return good_lfp_data[:,good_trials_bool]
